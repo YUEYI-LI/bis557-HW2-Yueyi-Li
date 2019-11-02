@@ -1,0 +1,135 @@
+## ----pressure1, echo=FALSE, fig.cap="A caption", out.width = '100%'------
+knitr::include_graphics("/Users/fanny/Downloads/WechatIMG179.JPEG")
+
+## ---- echo = F-----------------------------------------------------------
+# ridge functions 
+ridge <- function(X, y, lambda_vals) {
+  # scale the independent variables
+  X <- scale(X)
+  svd_obj <- svd(X)
+  U <- svd_obj$u
+  V <- svd_obj$v
+  d <- svd_obj$d
+  ridge_beta <- matrix(NA_real_, nrow = length(lambda_vals), ncol = ncol(X))
+  for (i in 1 : length(lambda_vals)) {
+    D <- diag(d / (d^2 + lambda_vals[i]))
+    ridge_beta[i,] <- V %*% D %*% t(U) %*% y
+  }
+  ridge_beta
+}
+opt_ridge <- function (X, y, lambda_vals){
+  set.seed(123)
+  # scale the independent variables
+  X <- scale(X)
+  # shuffle X and y
+  ind <- sample(nrow(X), nrow(X), replace = F)
+  X <- X[ind,]
+  y <- y[ind]
+  error <- rep(0, length(lambda_vals))
+  folds <- as.numeric(cut(1:nrow(X), 5))
+  for (j in 1: length(lambda_vals)) {
+    for (i in 1:5){
+      X_train <- X[folds != i, ]
+      y_train <- y[folds != i]
+      X_test <- X[folds == i, ]
+      y_test <- y[folds == i]
+      svd_obj <- svd(X_train)
+      U <- svd_obj$u
+      V <- svd_obj$v
+      d <- svd_obj$d
+      D <- diag(d / (d^2 + lambda_vals[j]))
+      ridge_beta <- V %*% D %*% t(U) %*% y_train
+      pred <- as.matrix(X_test) %*% ridge_beta
+      error[j] <- error[j] + sum(folds==i)/nrow(X) * mean((pred - y_test)^2)
+    }
+  }
+  plot(lambda_vals,error)
+  lambda_vals[which.min(error)]
+}
+
+## ---- cache = T----------------------------------------------------------
+########## simulation study
+### Case 1: Normal X (no colinearity)
+# simulate a data set
+set.seed(123)
+n <- 1000
+p <- 25
+beta <- c(1, rep(0, p - 1))
+X <- matrix(rnorm(n * p), ncol = p)
+
+# measure of numerical stability - conditional number
+# For OLS 
+svals <- svd(t(X) %*% X)$d
+max(svals) / min(svals) 
+# For Ridge 
+svals <- svd(t(X) %*% X + 27 * diag(ncol(X)))$d
+max(svals) / min(svals) 
+
+# calculate least squares estimates and the mean square error - statistical error
+N <- 1e4
+ls_errors <- rep(0, N)
+casl_ols_svd <-function(X, y){
+    svd_output <- svd(X)
+    r <- sum(svd_output$d > .Machine$double.eps)
+    U <- svd_output$u[, 1:r]
+    V <- svd_output$v[, 1:r]
+    beta <- V %*% (t(U) %*% y / svd_output$d[1:r])
+    beta
+  }
+for (k in 1:N) {
+  y <- X %*% beta + rnorm(n)
+  betahat <- casl_ols_svd(X, y)
+  ls_errors[k] <- sqrt(sum((betahat - beta)^2))
+}
+mean(ls_errors)  # 0.1584
+
+# calculate the ridge estimates and the mean squared error
+# calculate the optimized lambda
+lambda <- opt_ridge(X, y, 0:100) # 27
+rg_errors <- rep(0, N)
+# calculate ridge mse using optimized lambda
+for (k in 1:N) {
+  y <- X %*% beta + rnorm(n)
+  betahat <- ridge(X, y, lambda)
+  rg_errors[k] <- sqrt(sum((betahat - beta)^2))
+}
+mean(rg_errors)  # 0.1564
+
+## ---- cache = T, collapse=T----------------------------------------------
+### Case 2: Colinear X 
+# simulate a data set with colinearity
+alpha <- 0.001
+X[,1] <- X[,1] * alpha + X[,2] * (1 - alpha)
+
+# measure of numerical stability - conditional number
+# For OLS 
+svals <- svd(t(X) %*% X)$d
+max(svals) / min(svals)  # 4391608
+# For Ridge 
+svals <- svd(t(X) %*% X + 94 * diag(ncol(X)))$d
+max(svals) / min(svals)  # 23.24
+
+# calculate least squares estimates and the mean square error - statistical error
+N <- 1e4
+ls_errors <- rep(0, N)
+for (k in 1:N) {
+  y <- X %*% beta + rnorm(n)
+  betahat <- casl_ols_svd(X, y)
+  ls_errors[k] <- sqrt(sum((betahat - beta)^2))
+}
+mean(ls_errors)  # 36.27  inflate more than 200 times
+
+# calculate the ridge estimates and the mean squared error
+# calculate the optimized lambda
+lambda <- opt_ridge(X, y, 0:100) # 94
+# calculate ridge mse using optimized lambda
+for (k in 1:N) {
+  y <- X %*% beta + rnorm(n)
+  betahat <- ridge(X, y, lambda)
+  rg_errors[k] <- sqrt(sum((betahat - beta)^2))
+}
+mean(rg_errors)  # 0.722
+
+## ----pressure2, echo=FALSE, fig.cap="A caption", out.width = '100%'------
+knitr::include_graphics("/Users/fanny/Downloads/WechatIMG178.JPEG")
+
